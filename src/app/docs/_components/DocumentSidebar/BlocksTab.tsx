@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { icons } from 'lucide-react';
 
@@ -81,8 +83,8 @@ const BlocksTab = () => {
     { id: 'all', name: '全部', icon: 'Grid3X3' },
     { id: 'text', name: '文本', icon: 'Type' },
     { id: 'media', name: '媒体', icon: 'Image' },
-    { id: 'layout', name: '布局', icon: 'Layout' },
-    { id: 'data', name: '数据', icon: 'BarChart3' },
+    { id: 'layout', name: '布局', icon: 'LayoutDashboard' },
+    { id: 'data', name: '数据', icon: 'Database' },
     { id: 'interactive', name: '交互', icon: 'MousePointer' },
   ];
 
@@ -152,28 +154,28 @@ const BlocksTab = () => {
       category: 'data',
     },
     {
-      icon: 'BarChart3' as keyof typeof icons,
+      icon: 'ChartColumnBig' as keyof typeof icons,
       label: '图表',
       description: '插入各种类型的图表',
       blockType: 'chart',
       category: 'data',
     },
     {
-      icon: 'Columns' as keyof typeof icons,
+      icon: 'LayoutDashboard' as keyof typeof icons,
       label: '多列布局',
       description: '创建多列内容布局',
       blockType: 'columns',
       category: 'layout',
     },
     {
-      icon: 'Separator' as keyof typeof icons,
+      icon: 'Minus' as keyof typeof icons,
       label: '分割线',
       description: '添加水平分割线',
       blockType: 'divider',
       category: 'layout',
     },
     {
-      icon: 'CheckSquare' as keyof typeof icons,
+      icon: 'ListTodo' as keyof typeof icons,
       label: '任务列表',
       description: '创建可勾选的任务列表',
       blockType: 'todolist',
@@ -184,6 +186,21 @@ const BlocksTab = () => {
       label: '日历',
       description: '插入日历组件',
       blockType: 'calendar',
+      category: 'interactive',
+    },
+    {
+      icon: 'Smile' as keyof typeof icons,
+      label: 'emoji',
+      description: '插入Emoji',
+      blockType: 'emoji',
+      category: 'interactive',
+    },
+    // 插入ai组件
+    {
+      icon: 'Bot' as keyof typeof icons,
+      label: 'AI',
+      description: '插入AI组件',
+      blockType: 'ai',
       category: 'interactive',
     },
   ];
@@ -200,7 +217,7 @@ const BlocksTab = () => {
   });
 
   const handleDragStart = (event: React.DragEvent, blockType: string) => {
-    event.dataTransfer.setData('text/plain', blockType);
+    event.dataTransfer.setData('application/x-block-type', blockType);
     event.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -210,7 +227,7 @@ const BlocksTab = () => {
   };
 
   return (
-    <div className="p-4 space-y-4 flex flex-col flex-1">
+    <div className="p-4 space-y-4 flex flex-col h-full">
       {/* 搜索框 */}
       <div className="relative">
         <input
@@ -243,7 +260,7 @@ const BlocksTab = () => {
               key={category.id}
               onClick={() => setSelectedCategory(category.id)}
               className={cn(
-                'flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                'flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer',
                 selectedCategory === category.id
                   ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600',

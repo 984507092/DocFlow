@@ -54,12 +54,12 @@ export interface DocumentResponse {
 }
 
 // 通过分享链接访问的文档响应
-export interface SharedDocumentsResponse {
-  data: SharedDocumentItem[];
-  code: number;
-  message: string;
-  timestamp: number;
-}
+// export interface SharedDocumentsResponse {
+//   data: SharedDocumentItem[];
+//   code: number;
+//   message: string;
+//   timestamp: number;
+// }
 
 export interface CreateDocumentDto {
   title: string;
@@ -168,4 +168,10 @@ export interface GetDocumentContentResponse {
     updated_at: string;
   };
   timestamp: number;
+}
+
+// 移动文档的请求类型
+export interface MoveDocumentsDto {
+  document_ids: number[];
+  target_folder_id: number;
 }

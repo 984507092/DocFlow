@@ -1,6 +1,4 @@
-'use client';
-
-import DragHandle from '@tiptap-pro/extension-drag-handle-react';
+import { DragHandle } from '@tiptap/extension-drag-handle-react';
 import { Editor } from '@tiptap/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useEffect, useState } from 'react';
@@ -32,53 +30,9 @@ export const ContentItemMenu = ({ editor, isEditable = true }: ContentItemMenuPr
   }, [editor, menuOpen]);
 
   return (
-    <DragHandle
-      pluginKey="ContentItemMenu"
-      editor={editor}
-      onNodeChange={data.handleNodeChange}
-      tippyOptions={{
-        offset: [-2, 16],
-        zIndex: 9999,
-        placement: 'top-start',
-        interactive: true,
-        appendTo: () => document.body,
-        hideOnClick: false,
-        trigger: 'manual',
-        duration: [200, 150],
-        animation: 'shift-away-subtle',
-        theme: 'content-item-menu',
-        popperOptions: {
-          strategy: 'absolute',
-          modifiers: [
-            {
-              name: 'preventOverflow',
-              options: {
-                boundary: 'viewport',
-                padding: 8,
-                altBoundary: true,
-                altAxis: true,
-                tether: false,
-              },
-            },
-            {
-              name: 'flip',
-              options: {
-                fallbackPlacements: ['bottom-start', 'top-end', 'bottom-end'],
-                allowedAutoPlacements: ['top', 'bottom'],
-              },
-            },
-            {
-              name: 'offset',
-              options: {
-                offset: [0, 8],
-              },
-            },
-          ],
-        },
-      }}
-    >
+    <DragHandle pluginKey="ContentItemMenu" editor={editor} onNodeChange={data.handleNodeChange}>
       {isEditable ? (
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 relative -top-[6px]">
           <Toolbar.Button onClick={actions.handleAdd}>
             <Icon name="Plus" />
           </Toolbar.Button>

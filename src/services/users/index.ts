@@ -1,12 +1,5 @@
 import request, { ErrorHandler } from '../request';
-import { User } from './type';
-
-export interface SearchUsersResponse {
-  users: User[];
-  total: number;
-  timestamp: number;
-}
-
+import { SearchUsersResponse, UpdateUserDto } from './type';
 export const UserApi = {
   /**
    * 搜索用户
@@ -26,6 +19,13 @@ export const UserApi = {
       params: { q: query, limit, offset },
       errorHandler,
     }),
+
+  updateUser: (data: UpdateUserDto, errorHandler?: ErrorHandler) => {
+    return request.put('/api/v1/users', {
+      errorHandler,
+      params: data,
+    });
+  },
 };
 
 export default UserApi;

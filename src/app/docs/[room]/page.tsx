@@ -1,100 +1,253 @@
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
+'use client';
 
-import { DocumentClient } from '../_components/DocumentClient';
-import { useDocumentError } from '../_components/error';
-import { getDocumentContent, generateDocumentHTML } from '../_components/document-service';
+import { useEffect, useState, useRef } from 'react';
+import { useParams } from 'next/navigation';
+import { EditorContent, useEditor } from '@tiptap/react';
+import * as Y from 'yjs';
+import { Collaboration } from '@tiptap/extension-collaboration';
+import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
+import { IndexeddbPersistence } from 'y-indexeddb';
+import { HocuspocusProvider } from '@hocuspocus/provider';
 
-interface PageProps {
-  params: Promise<{
-    room: string;
-  }>;
+import { ExtensionKit } from '@/extensions/extension-kit';
+import { getCursorColorByUserId } from '@/utils/cursor_color';
+import { getAuthToken } from '@/utils/cookie';
+import DocumentHeader from '@/app/docs/_components/DocumentHeader';
+import { TableOfContents } from '@/app/docs/_components/TableOfContents';
+import { useSidebar } from '@/stores/sidebarStore';
+import { ContentItemMenu } from '@/components/menus/ContentItemMenu';
+import { LinkMenu } from '@/components/menus';
+import { TextMenu } from '@/components/menus/TextMenu';
+import { ColumnsMenu } from '@/extensions/MultiColumn/menus';
+import { TableRowMenu, TableColumnMenu } from '@/extensions/Table/menus';
+import { ImageBlockMenu } from '@/components/menus';
+// 类型定义
+interface CollaborationUser {
+  id: string;
+  name: string;
+  color: string;
+  avatar: string;
 }
 
-export default async function DocumentPage({ params }: PageProps) {
-  // 获取动态路由参数
-  const { room: documentId } = await params;
-  // 检查认证状态
-  const cookieStore = await cookies();
-  const authToken = cookieStore.get('auth_token')?.value;
+export default function DocumentPage() {
+  const params = useParams();
+  const documentId = params?.room as string;
+  const menuContainerRef = useRef<HTMLDivElement>(null);
+  const sidebar = useSidebar();
 
-  if (!authToken) {
-    redirect('/auth');
-  }
+  // 防止水合不匹配的强制客户端渲染
+  const [isMounted, setIsMounted] = useState(false);
 
-  // 在服务器端获取文档数据
-  const result = await getDocumentContent(documentId, authToken);
+  // 基本状态
+  const [isTocOpen, setIsTocOpen] = useState(false);
 
-  // 处理错误情况
-  if (result.error) {
-    if (result.error === 'AUTH_FAILED') {
-      redirect('/auth');
+  // 协作编辑器状态
+  const [doc, setDoc] = useState<Y.Doc | null>(null);
+  const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
+  const [currentUser, setCurrentUser] = useState<CollaborationUser | null>(null);
+  const [connectedUsers, setConnectedUsers] = useState<CollaborationUser[]>([]);
+
+  // Editor编辑器的容器元素
+  const editorContainRef = useRef<HTMLDivElement>(null);
+
+  // 目录切换函数
+  const toggleToc = () => {
+    setIsTocOpen(!isTocOpen);
+  };
+
+  // 初始化
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setDoc(new Y.Doc());
+      setIsMounted(true);
+    }
+  }, []);
+
+  // 获取当前用户信息
+  useEffect(() => {
+    if (!documentId || typeof window === 'undefined') return;
+
+    try {
+      const userProfileStr = localStorage.getItem('user_profile');
+
+      if (userProfileStr) {
+        const userProfile = JSON.parse(userProfileStr);
+        setCurrentUser({
+          id: userProfile.id.toString(),
+          name: userProfile.name,
+          color: getCursorColorByUserId(userProfile.id.toString()),
+          avatar: userProfile.avatar_url,
+        });
+      }
+    } catch (error) {
+      console.error('解析用户信息失败:', error);
+    }
+  }, [documentId]);
+
+  // 本地持久化
+  useEffect(() => {
+    if (!documentId || !doc || typeof window === 'undefined') return;
+
+    const persistence = new IndexeddbPersistence(`tiptap-collaborative-${documentId}`, doc);
+
+    return () => {
+      persistence.destroy();
+    };
+  }, [documentId, doc]);
+
+  // 协作提供者
+  useEffect(() => {
+    if (!documentId || !doc) return;
+
+    const websocketUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
+
+    if (!websocketUrl) {
+      console.error('WebSocket URL 未配置');
+
+      return;
     }
 
-    return useDocumentError(result, documentId);
+    const authToken = getAuthToken();
+    const hocuspocusProvider = new HocuspocusProvider({
+      url: websocketUrl,
+      name: documentId,
+      document: doc,
+      token: authToken,
+    });
+
+    setProvider(hocuspocusProvider);
+
+    return () => {
+      hocuspocusProvider.destroy();
+    };
+  }, [documentId, doc]);
+
+  // 设置用户awareness信息
+  useEffect(() => {
+    if (provider?.awareness && currentUser) {
+      provider.awareness.setLocalStateField('user', currentUser);
+    }
+  }, [provider, currentUser]);
+
+  // 协作用户管理
+  useEffect(() => {
+    if (!provider?.awareness) return;
+
+    const handleAwarenessUpdate = () => {
+      const states = provider.awareness!.getStates();
+      const users: CollaborationUser[] = [];
+
+      states.forEach((state, clientId) => {
+        if (state?.user) {
+          const userData = state.user;
+          const userId = userData.id || clientId.toString();
+
+          if (currentUser && userId !== currentUser.id) {
+            users.push({
+              id: userId,
+              name: userData.name,
+              color: getCursorColorByUserId(userId),
+              avatar: userData.avatar,
+            });
+          }
+        }
+      });
+
+      setConnectedUsers(users);
+    };
+
+    provider.awareness.on('update', handleAwarenessUpdate);
+
+    return () => provider.awareness?.off('update', handleAwarenessUpdate);
+  }, [provider, currentUser]);
+
+  // 创建编辑器
+  const editor = useEditor(
+    {
+      extensions: [
+        ...ExtensionKit({ provider }),
+        ...(doc ? [Collaboration.configure({ document: doc, field: 'content' })] : []),
+        ...(provider && currentUser && doc
+          ? [CollaborationCaret.configure({ provider, user: currentUser })]
+          : []),
+      ],
+      content: '<p>开始编写您的文档...</p>',
+      editorProps: {
+        attributes: {
+          autocomplete: 'off',
+          autocorrect: 'off',
+          autocapitalize: 'off',
+          class: 'min-h-full',
+          spellcheck: 'false',
+        },
+      },
+      immediatelyRender: false,
+      shouldRerenderOnTransaction: false,
+    },
+    [doc, provider, currentUser],
+  );
+
+  if (!isMounted || !doc || !editor) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+        <div className="text-center">
+          <div className="inline-block animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
+          <p className="text-lg text-gray-600 dark:text-gray-400">正在初始化编辑器...</p>
+        </div>
+      </div>
+    );
   }
-
-  const documentData = result.data;
-  const content = documentData.content;
-
-  console.log('documentData:', documentData);
-  console.log('content:', content);
-
-  // 生成初始HTML用于SSR
-  const initialHTML = generateDocumentHTML(content);
 
   return (
-    <div className="w-full h-screen" suppressHydrationWarning>
-      <DocumentClient
-        documentId={documentId}
-        initialContent={content}
-        initialHTML={initialHTML}
-        enableCollaboration={true}
+    <div
+      className="h-screen flex flex-col bg-white dark:bg-gray-900"
+      ref={menuContainerRef}
+      suppressHydrationWarning
+    >
+      {/* Header */}
+      <DocumentHeader
+        editor={editor}
+        isSidebarOpen={sidebar.isOpen}
+        toggleSidebar={sidebar.toggle}
+        isTocOpen={isTocOpen}
+        toggleToc={toggleToc}
+        provider={provider}
+        connectedUsers={connectedUsers}
+        currentUser={currentUser}
       />
+
+      {/* 主内容区域 */}
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex-1 relative">
+          <div
+            ref={editorContainRef}
+            // onScroll={scrollLightHandler}
+            className="h-full overflow-y-auto relative w-full"
+          >
+            <EditorContent editor={editor} className="prose-container h-full pl-14" />
+          </div>
+        </div>
+
+        {/* 目录侧边栏 */}
+        {isTocOpen && editor && (
+          <div className="w-80 border-l border-slate-200/60 dark:border-slate-800/60 overflow-hidden bg-white/95 dark:bg-slate-950/95 backdrop-blur-sm">
+            <TableOfContents isOpen={isTocOpen} editor={editor} />
+          </div>
+        )}
+      </div>
+
+      {/* 编辑器菜单 */}
+      {editor && (
+        <>
+          <ContentItemMenu editor={editor} />
+          <LinkMenu editor={editor} appendTo={menuContainerRef} />
+          <TextMenu editor={editor} />
+          <ColumnsMenu editor={editor} appendTo={menuContainerRef} />
+          <TableRowMenu editor={editor} appendTo={menuContainerRef} />
+          <TableColumnMenu editor={editor} appendTo={menuContainerRef} />
+          <ImageBlockMenu editor={editor}></ImageBlockMenu>
+        </>
+      )}
     </div>
   );
-}
-
-// 生成静态参数（可选，用于静态生成）
-export function generateStaticParams() {
-  return [];
-}
-
-// 元数据生成
-export async function generateMetadata({ params }: PageProps) {
-  try {
-    // 获取动态路由参数
-    const { room: documentId } = await params;
-
-    const cookieStore = await cookies();
-    const authToken = cookieStore.get('auth_token')?.value;
-
-    if (!authToken) {
-      return {
-        title: `协作文档 ${documentId} - 需要登录`,
-        description: '需要登录才能查看此协作文档',
-      };
-    }
-
-    const result = await getDocumentContent(documentId, authToken);
-
-    if (result.error || !result.data) {
-      return {
-        title: `协作文档 ${documentId} - 加载失败`,
-        description: '协作文档加载失败，请稍后重试',
-      };
-    }
-
-    const title = result.data.title || '无标题协作文档';
-
-    return {
-      title: title,
-      description: `实时协作编辑文档：${title}`,
-    };
-  } catch {
-    return {
-      title: '协作文档 - 错误',
-      description: '协作文档加载时发生错误',
-    };
-  }
 }

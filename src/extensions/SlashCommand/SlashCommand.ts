@@ -99,18 +99,23 @@ export const SlashCommand = Extension.create({
         },
         render: () => {
           let component: ReactRenderer<SlashCommandPopoverRef, any>;
+          let scrollHandler: (() => void) | null = null;
+          let editorRef: Editor | null = null;
 
           return {
             onStart: (props: SuggestionProps) => {
+              const { view } = props.editor;
+              editorRef = props.editor;
+
               const getReferenceClientRect = () => {
                 if (!props.clientRect) {
-                  return props.editor.storage[extensionName].rect;
+                  return (props.editor.storage as any)[extensionName]?.rect;
                 }
 
                 const rect = props.clientRect();
 
                 if (!rect) {
-                  return props.editor.storage[extensionName].rect;
+                  return (props.editor.storage as any)[extensionName]?.rect;
                 }
 
                 let yPos = rect.y;
@@ -133,18 +138,28 @@ export const SlashCommand = Extension.create({
                 },
                 editor: props.editor,
               });
+
+              scrollHandler = () => {
+                if (!getReferenceClientRect()) return;
+                component.updateProps({
+                  anchorRect: getReferenceClientRect(),
+                });
+              };
+
+              view.dom.parentElement?.parentElement?.addEventListener('scroll', scrollHandler);
+              view.focus();
             },
 
             onUpdate(props: SuggestionProps) {
               const getReferenceClientRect = () => {
                 if (!props.clientRect) {
-                  return props.editor.storage[extensionName].rect;
+                  return (props.editor.storage as any)[extensionName]?.rect;
                 }
 
                 const rect = props.clientRect();
 
                 if (!rect) {
-                  return props.editor.storage[extensionName].rect;
+                  return (props.editor.storage as any)[extensionName]?.rect;
                 }
 
                 let yPos = rect.y;
@@ -157,16 +172,18 @@ export const SlashCommand = Extension.create({
                 return new DOMRect(rect.x, yPos, rect.width, rect.height);
               };
 
-              props.editor.storage[extensionName].rect = props.clientRect
-                ? getReferenceClientRect()
-                : {
-                    width: 0,
-                    height: 0,
-                    left: 0,
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                  };
+              (props.editor.storage as any)[extensionName] = {
+                rect: props.clientRect
+                  ? getReferenceClientRect()
+                  : {
+                      width: 0,
+                      height: 0,
+                      left: 0,
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                    },
+              };
 
               const anchorRect = getReferenceClientRect();
 
@@ -195,6 +212,25 @@ export const SlashCommand = Extension.create({
               if (props.event.key === 'Enter' && handled) {
                 props.event.preventDefault();
                 props.event.stopPropagation();
+                //  退出的时候销毁滚动监听事件
+
+                if (scrollHandler) {
+                  props.view.dom.parentElement?.parentElement?.removeEventListener(
+                    'scroll',
+                    scrollHandler,
+                  );
+                }
+
+                // 取消监听函数并销毁组件
+                if (scrollHandler && editorRef) {
+                  editorRef.view.dom.parentElement?.parentElement?.removeEventListener(
+                    'scroll',
+                    scrollHandler,
+                  );
+                  scrollHandler = null;
+                }
+
+                component?.destroy();
 
                 return true;
               }
@@ -202,7 +238,14 @@ export const SlashCommand = Extension.create({
               return handled;
             },
 
-            onExit() {
+            onExit(props: SuggestionProps) {
+              const { view } = props.editor;
+              // 退出的时候销毁滚动监听事件
+
+              if (scrollHandler) {
+                view.dom.parentElement?.parentElement?.removeEventListener('scroll', scrollHandler);
+              }
+
               component?.destroy();
             },
           };

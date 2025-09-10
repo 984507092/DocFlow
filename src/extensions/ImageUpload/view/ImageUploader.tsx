@@ -1,26 +1,49 @@
 import { ChangeEvent, useCallback } from 'react';
+import { Editor } from '@tiptap/core';
 
-import { useDropZone, useFileUpload, useUploader } from './hooks';
+import { useDropZone, useFileUpload, useImgUpload } from './hooks';
 
-import { Spinner } from '@/components/ui/Spinner';
+import Spinner from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/utils/utils';
 
-export const ImageUploader = ({ onUpload }: { onUpload: (url: string) => void }) => {
-  const { loading, uploadFile } = useUploader({ onUpload });
+export const ImageUploader = ({
+  getPos,
+  editor,
+}: {
+  getPos: () => number | undefined;
+  editor: Editor;
+}) => {
   const { handleUploadClick, ref } = useFileUpload();
-  const { draggedInside, onDrop, onDragEnter, onDragLeave } = useDropZone({ uploader: uploadFile });
+  const { isUploading, uploadImage } = useImgUpload();
 
-  const onFileChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => (e.target.files ? uploadFile(e.target.files[0]) : null),
-    [uploadFile],
+  // 处理图片文件的方法
+  const handleImageFile = useCallback(
+    (file: File) => {
+      const pos = getPos();
+      uploadImage(file, editor, pos);
+    },
+    [getPos, editor],
   );
 
-  if (loading) {
+  const { draggedInside, onDragOver, onDrop, onDragEnter, onDragLeave } = useDropZone({
+    uploader: handleImageFile,
+  });
+  const onFileChange = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files?.[0]) {
+        const file = e.target.files[0];
+        handleImageFile(file);
+      }
+    },
+    [handleImageFile],
+  );
+
+  if (isUploading) {
     return (
       <div className="flex items-center justify-center p-8 rounded-lg min-h-[10rem] bg-opacity-80">
-        <Spinner className="text-neutral-500" size={1.5} />
+        <Spinner className="text-neutral-500" size="lg" />
       </div>
     );
   }
@@ -34,8 +57,9 @@ export const ImageUploader = ({ onUpload }: { onUpload: (url: string) => void })
     <div
       className={wrapperClass}
       onDrop={onDrop}
-      onDragOver={onDragEnter}
+      onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
+      onDragOver={onDragOver} // 添加这一行
       contentEditable={false}
     >
       <Icon name="Image" className="w-12 h-12 mb-4 text-black dark:text-white opacity-20" />

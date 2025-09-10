@@ -1,7 +1,7 @@
+import { mergeAttributes, Range, ChainedCommands } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
-import { mergeAttributes, Range } from '@tiptap/core';
 
-import { ImageBlockView } from './components/ImageBlockView';
+import ImageBlockView from './components/imageBlockView';
 import { Image } from '../Image';
 
 declare module '@tiptap/core' {
@@ -30,29 +30,29 @@ export const ImageBlock = Image.extend({
     return {
       src: {
         default: '',
-        parseHTML: (element) => element.getAttribute('src'),
-        renderHTML: (attributes) => ({
+        parseHTML: (element: Element) => element.getAttribute('src'),
+        renderHTML: (attributes: any) => ({
           src: attributes.src,
         }),
       },
       width: {
         default: '100%',
-        parseHTML: (element) => element.getAttribute('data-width'),
-        renderHTML: (attributes) => ({
+        parseHTML: (element: Element) => element.getAttribute('data-width'),
+        renderHTML: (attributes: any) => ({
           'data-width': attributes.width,
         }),
       },
       align: {
         default: 'center',
-        parseHTML: (element) => element.getAttribute('data-align'),
-        renderHTML: (attributes) => ({
+        parseHTML: (element: Element) => element.getAttribute('data-align'),
+        renderHTML: (attributes: any) => ({
           'data-align': attributes.align,
         }),
       },
       alt: {
         default: undefined,
-        parseHTML: (element) => element.getAttribute('alt'),
-        renderHTML: (attributes) => ({
+        parseHTML: (element: Element) => element.getAttribute('alt'),
+        renderHTML: (attributes: any) => ({
           alt: attributes.alt,
         }),
       },
@@ -61,49 +61,35 @@ export const ImageBlock = Image.extend({
 
   parseHTML() {
     return [
-      {
-        tag: 'img[src*="tiptap.dev"]:not([src^="data:"]), img[src*="windows.net"]:not([src^="data:"])',
-      },
-      {
-        tag: 'figure[data-type="imageBlock"]',
-      },
+      // {
+      //   tag: 'img[src]:not([src^="http"]):not([src^="//"])',
+      //   getAttrs: (element: HTMLElement) => {
+      //     const src = (element as HTMLElement).getAttribute('src')?.trim();
+      //     // 确保不是外部链接
+      //     if (src && !src.startsWith('http') && !src.startsWith('//')) {
+      //       return { src };
+      //     }
+      //     return false;
+      //   },
+      // },
     ];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    const { src, width, align, alt } = HTMLAttributes;
-    const alignClass =
-      align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
-
-    return [
-      'figure',
-      {
-        'data-type': 'imageBlock',
-        class: alignClass,
-      },
-      [
-        'img',
-        mergeAttributes(this.options.HTMLAttributes, {
-          src,
-          alt: alt || '',
-          class: 'rounded block h-auto w-full max-w-full',
-          style: width ? `width: ${width}` : undefined,
-        }),
-      ],
-    ];
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
   },
 
   addCommands() {
     return {
       setImageBlock:
-        (attrs) =>
-        ({ commands }) => {
+        (attrs: { src: string }) =>
+        ({ commands }: { commands: ChainedCommands }) => {
           return commands.insertContent({ type: 'imageBlock', attrs: { src: attrs.src } });
         },
 
       setImageBlockAt:
-        (attrs) =>
-        ({ commands }) => {
+        (attrs: { src: string; pos: number | Range }) =>
+        ({ commands }: { commands: ChainedCommands }) => {
           return commands.insertContentAt(attrs.pos, {
             type: 'imageBlock',
             attrs: { src: attrs.src },
@@ -111,13 +97,13 @@ export const ImageBlock = Image.extend({
         },
 
       setImageBlockAlign:
-        (align) =>
-        ({ commands }) =>
+        (align: 'left' | 'center' | 'right') =>
+        ({ commands }: { commands: ChainedCommands }) =>
           commands.updateAttributes('imageBlock', { align }),
 
       setImageBlockWidth:
-        (width) =>
-        ({ commands }) =>
+        (width: number) =>
+        ({ commands }: { commands: ChainedCommands }) =>
           commands.updateAttributes('imageBlock', {
             width: `${Math.max(0, Math.min(100, width))}%`,
           }),
@@ -125,36 +111,7 @@ export const ImageBlock = Image.extend({
   },
 
   addNodeView() {
-    // 只在客户端环境使用React组件
-    if (typeof window !== 'undefined') {
-      return ReactNodeViewRenderer(ImageBlockView);
-    }
-
-    // SSR环境使用简单的DOM渲染
-    return ({ node }) => {
-      const { src, width, align, alt } = node.attrs;
-      const alignClass =
-        align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
-
-      const figure = document.createElement('figure');
-      figure.setAttribute('data-type', 'imageBlock');
-      figure.className = alignClass;
-
-      const img = document.createElement('img');
-      img.src = src;
-      img.alt = alt || '';
-      img.className = 'rounded block h-auto w-full max-w-full';
-
-      if (width) {
-        img.style.width = width;
-      }
-
-      figure.appendChild(img);
-
-      return {
-        dom: figure,
-      };
-    };
+    return ReactNodeViewRenderer(ImageBlockView);
   },
 });
 

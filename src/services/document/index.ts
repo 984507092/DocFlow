@@ -1,3 +1,5 @@
+import { JSONContent } from '@tiptap/core';
+
 import request, { ErrorHandler } from '../request';
 import {
   CreateDocumentDto,
@@ -7,10 +9,11 @@ import {
   DeleteDocumentDto,
   RenameDocumentDto,
   DuplicateDocumentDto,
-  SharedDocumentsResponse,
+  // SharedDocumentsResponse,
   AccessSharedDocumentDto,
   AccessSharedDocumentResponse,
   GetDocumentContentResponse,
+  SharedDocumentItem,
 } from './type';
 
 export const DocumentApi = {
@@ -63,6 +66,15 @@ export const DocumentApi = {
       },
     }),
 
+  // 保存文档内容
+  SaveDocumentContent: (documentId: number, content: JSONContent, errorHandler?: ErrorHandler) =>
+    request.put<{ success: boolean }>(`/api/v1/documents/${documentId}/content`, {
+      errorHandler,
+      params: {
+        content,
+      },
+    }),
+
   GetDocumentPermission: (id: string, errorHandler?: ErrorHandler) =>
     request.get<DocumentResponse>(`/api/v1/documents/${id}/user-permissions`, {
       errorHandler,
@@ -86,7 +98,7 @@ export const DocumentApi = {
 
   // 获取通过分享链接访问过的文档
   GetSharedDocuments: (errorHandler?: ErrorHandler) =>
-    request.get<SharedDocumentsResponse>('/api/v1/documents/shared-via-link', { errorHandler }),
+    request.get<SharedDocumentItem[]>('/api/v1/documents/shared-via-link', { errorHandler }),
 
   // 通过分享链接访问文档
   AccessSharedDocument: (data: AccessSharedDocumentDto, errorHandler?: ErrorHandler) =>
@@ -94,6 +106,19 @@ export const DocumentApi = {
       errorHandler,
       params: {
         password: data.password,
+      },
+    }),
+
+  // 移动文档
+  MoveDocuments: (
+    data: { document_ids: number[]; target_folder_id: number },
+    errorHandler?: ErrorHandler,
+  ) =>
+    request.put<{ success: boolean }>('/api/v1/documents/move', {
+      errorHandler,
+      params: {
+        document_ids: data.document_ids,
+        target_folder_id: data.target_folder_id,
       },
     }),
 };
