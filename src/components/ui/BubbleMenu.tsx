@@ -9,6 +9,7 @@ interface BubbleMenuProps {
   updateDelay?: number;
   pluginKey?: string;
   getReferenceClientRect?: () => DOMRect;
+  onHide?: () => void; // 新增隐藏回调
 }
 
 export const BubbleMenu: React.FC<BubbleMenuProps> = ({
@@ -17,6 +18,7 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({
   shouldShow = () => true,
   updateDelay = 0,
   getReferenceClientRect,
+  onHide, // 解构onHide回调
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<DOMRect | null>(null);
@@ -30,30 +32,31 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({
         return;
       }
 
-      // Get the position
-      let rect: DOMRect;
+      // 使用requestAnimationFrame避免在React渲染周期内调用
+      requestAnimationFrame(() => {
+        let rect: DOMRect;
 
-      if (getReferenceClientRect) {
-        rect = getReferenceClientRect();
-      } else {
-        const { ranges } = editor.state.selection;
-        const from = Math.min(...ranges.map((range) => range.$from.pos));
-        const to = Math.max(...ranges.map((range) => range.$to.pos));
+        if (getReferenceClientRect) {
+          rect = getReferenceClientRect();
+        } else {
+          const { ranges } = editor.state.selection;
+          const from = Math.min(...ranges.map((range) => range.$from.pos));
+          const to = Math.max(...ranges.map((range) => range.$to.pos));
 
-        if (from === to) {
-          setIsOpen(false);
+          if (from === to) {
+            setIsOpen(false);
 
-          return;
+            return;
+          }
+
+          const domResult = editor.view.domAtPos(from);
+          const node = domResult.node as Element;
+          rect = node.getBoundingClientRect();
         }
 
-        const domResult = editor.view.domAtPos(from);
-        const node = domResult.node as Element;
-        rect = node.getBoundingClientRect();
-      }
-
-      // Set position and open the menu
-      setPosition(rect);
-      setIsOpen(true);
+        setPosition(rect);
+        setIsOpen(true);
+      });
     };
 
     // Handle delayed updates
@@ -77,6 +80,26 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({
     // Initial position update
     updatePosition();
 
+    if (!editor || !shouldShow()) {
+      setIsOpen(false);
+
+      return;
+    }
+
+    // 获取滚动容器
+    const scrollContainer = editor.isEditable && editor.view?.dom.parentElement?.parentElement;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    // 使用passive: true和throttle优化滚动监听
+    const handleScroll = () => {
+      requestAnimationFrame(updatePosition);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+
     return () => {
       // Cleanup
       editor.off('selectionUpdate', debouncedUpdate);
@@ -84,11 +107,20 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({
       editor.off('blur', () => setIsOpen(false));
       editor.off('update', debouncedUpdate);
 
+      scrollContainer.removeEventListener('scroll', handleScroll);
+
       if (updateTimeout.current) {
         clearTimeout(updateTimeout.current);
       }
     };
   }, [editor, shouldShow, updateDelay, getReferenceClientRect]);
+
+  // 监听isOpen状态变化，当变为false时触发回调
+  useEffect(() => {
+    if (isOpen === false && onHide) {
+      onHide();
+    }
+  }, [isOpen, onHide]);
 
   if (!position) {
     return null;
@@ -104,7 +136,7 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({
             position: 'absolute',
             left: position.left,
             top: position.bottom,
-            zIndex: 9999,
+            zIndex: 9,
           }}
         >
           {children}

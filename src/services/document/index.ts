@@ -4,6 +4,7 @@ import request, { ErrorHandler } from '../request';
 import {
   CreateDocumentDto,
   DocumentResponse,
+  GetDocumentsResponse,
   CreateShareLinkDto,
   ShareLinkResponse,
   DeleteDocumentDto,
@@ -12,18 +13,19 @@ import {
   // SharedDocumentsResponse,
   AccessSharedDocumentDto,
   AccessSharedDocumentResponse,
-  GetDocumentContentResponse,
   SharedDocumentItem,
+  DocumentPermissionData,
+  LatestDocumentItem,
 } from './type';
 
 export const DocumentApi = {
   // 获取文档列表
   GetDocument: (errorHandler?: ErrorHandler) =>
-    request.get<DocumentResponse>('/api/v1/documents', { errorHandler }),
+    request.get<GetDocumentsResponse>('/api/v1/documents', { errorHandler, cacheTime: 0 }),
 
-  // 获取文档内容
-  GetDocumentContent: (documentId: number, errorHandler?: ErrorHandler) =>
-    request.get<GetDocumentContentResponse>(`/api/v1/documents/${documentId}/content`, {
+  // 获取文档权限
+  GetDocumentPermissions: (documentId: number, errorHandler?: ErrorHandler) =>
+    request.get<DocumentPermissionData>(`/api/v1/documents/${documentId}/permissions`, {
       errorHandler,
     }),
 
@@ -75,11 +77,6 @@ export const DocumentApi = {
       },
     }),
 
-  GetDocumentPermission: (id: string, errorHandler?: ErrorHandler) =>
-    request.get<DocumentResponse>(`/api/v1/documents/${id}/user-permissions`, {
-      errorHandler,
-    }),
-
   // 复制文档
   DuplicateDocument: (data: DuplicateDocumentDto, errorHandler?: ErrorHandler) =>
     request.post<DocumentResponse>(`/api/v1/documents/${data.document_id}/duplicate`, {
@@ -121,6 +118,10 @@ export const DocumentApi = {
         target_folder_id: data.target_folder_id,
       },
     }),
+
+  // 查询最新的文档
+  GetLatestDocuments: (limit: number, errorHandler?: ErrorHandler) =>
+    request.get<LatestDocumentItem[]>(`/api/v1/documents/latest/${limit}`, { errorHandler }),
 };
 
 export default DocumentApi;

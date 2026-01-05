@@ -1,32 +1,14 @@
 import request, { ErrorHandler } from '../request';
-import { User } from './type';
 
-/**
- * 认证响应接口
- */
-export interface AuthResponse {
-  token: string;
-  refresh_token?: string;
-  expires_in?: number;
-  refresh_expires_in?: number;
-  user: User;
-}
-
-/**
- * 发送验证码响应接口
- */
-export interface SendCodeResponse {
-  success: boolean;
-  message: string;
-}
-
-/**
- * 邮箱验证码登录参数
- */
-export interface EmailCodeLoginParams {
-  email: string;
-  code: string;
-}
+import type {
+  User,
+  AuthResponse,
+  TokenRefreshResponse,
+  SendCodeResponse,
+  EmailCodeLoginParams,
+  EmailPasswordLoginParams,
+  EmailPasswordRegisterParams,
+} from '@/types/auth';
 
 /**
  * 认证服务API
@@ -50,6 +32,9 @@ export const authApi = {
     request.post<SendCodeResponse>('/api/v1/auth/email/send-code', {
       params: { email },
       errorHandler,
+      // 网络较慢时避免自动重试造成的重复发送，适当延长超时
+      retries: 0,
+      timeout: 30000,
     }),
 
   /**
@@ -91,12 +76,34 @@ export const authApi = {
    * 刷新访问令牌
    * @param refreshToken 刷新令牌
    * @param errorHandler 自定义错误处理函数
-   * @returns 新的访问令牌
+   * @returns 新的访问令牌和刷新令牌
+   * @note 此接口通常由 request.ts 内部自动调用，当检测到 401 错误时会自动刷新 token
    */
   refreshToken: (refreshToken: string, errorHandler?: ErrorHandler) =>
-    request.post<{ token: string; expires_in: number }>('/api/v1/auth/refresh', {
+    request.post<TokenRefreshResponse>('/api/v1/auth/refresh', {
       params: { refresh_token: refreshToken },
       errorHandler,
+    }),
+  /**
+   * 使用邮箱+密码登录
+   * @param params 邮箱和密码
+   * @param errorHandler 自定义错误处理函数
+   * @returns 认证结果，包含token等信息
+   */
+  emailPasswordLogin: (params: EmailPasswordLoginParams, errorHandler?: ErrorHandler) =>
+    request.post<AuthResponse>('/api/v1/auth/email/login/password', {
+      params,
+      errorHandler,
+    }),
+  /**
+   * 使用邮箱+密码注册
+   */
+  emailPasswordRegister: (params: EmailPasswordRegisterParams, errorHandler?: ErrorHandler) =>
+    request.post<AuthResponse>('/api/v1/auth/register', {
+      params,
+      errorHandler,
+      timeout: 30000,
+      retries: 0,
     }),
 };
 

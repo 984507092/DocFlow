@@ -46,16 +46,23 @@ export { Link } from './Link';
 export { Image } from './Image';
 export { ImageUpload } from './ImageUpload';
 export { ImageBlock } from './ImageBlock';
+export { TableImage } from './TableImage';
 export { Columns, Column } from './MultiColumn';
 export { emojiSuggestion } from './EmojiSuggestion';
 export { DraggableBlock } from './DraggableBlock';
 export { DragHandler } from './DragHandler';
 export { MarkdownPaste } from './MarkdownPaste';
 
-export { ExcalidrawImage } from './ExcalidrawImage';
-
 export { SelectOnlyCode } from './CodeBlock/SelectOnlyCode';
 export { Audio } from './Audio';
 export { AI } from './AI';
+export { TextToImage } from './TextToImage';
 export { Youtube } from './Youtube';
 export { ClearMarksOnEnter } from './ClearMarksOnEnter';
+export { Bilibili } from './Bilibili';
+export { Chart } from './Chart';
+export { Countdown } from './Countdown';
+export { Gantt } from './Gantt';
+export { Comment } from './Comment';
+export { Mention, mentionSuggestion, createMentionSuggestion, clearMentionCache } from './Mention';
+export type { MentionUser } from './Mention';

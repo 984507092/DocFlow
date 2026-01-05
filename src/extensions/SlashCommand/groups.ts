@@ -31,6 +31,16 @@ export const GROUPS: Group[] = [
             .run();
         },
       },
+      {
+        name: 'textToImage',
+        label: 'Text to Image',
+        iconName: 'Image',
+        description: 'Generate image from text description',
+        aliases: ['image', 'img', 'generate', 'draw'],
+        action: (editor) => {
+          editor.chain().focus().setTextToImage().run();
+        },
+      },
     ],
   },
   {
@@ -193,7 +203,8 @@ export const GROUPS: Group[] = [
           editor
             .chain()
             .focus()
-            .setColumns()
+            .setColumns(2)
+            .updateAttributes('columns', { rows: 2 })
             .focus(editor.state.selection.head - 1)
             .run();
         },
@@ -230,26 +241,92 @@ export const GROUPS: Group[] = [
         },
       },
       {
-        name: 'excalidraw',
-        label: 'Excalidraw',
-        iconName: 'Image',
-        description: 'Insert an Excalidraw diagram',
-        aliases: ['excalidraw'],
-        action: (editor) => {
-          editor.chain().focus().setExcalidrawImage({ type: '' }).run();
-          // window.open(`${window.location.origin}/excalidraw`);
-        },
-      },
-      {
         name: 'youtube',
         label: 'YouTube Video',
-        iconName: 'Play',
+        iconName: 'Youtube',
         description: 'Insert a YouTube video',
         aliases: ['video', 'yt'],
         action: (editor) => {
           // 触发 YouTube 弹窗事件
           const event = new CustomEvent('openYoutubeDialog', { detail: { editor } });
           window.dispatchEvent(event);
+        },
+      },
+      {
+        name: 'bilibili',
+        label: 'Bilibili Video',
+        iconName: 'Tv',
+        description: 'Insert a Bilibili video',
+        aliases: ['bili'],
+        action: (editor) => {
+          console.log('Bilibili');
+          editor.chain().focus().setBilibili({ src: '' }).run();
+        },
+      },
+      {
+        name: 'chart',
+        label: 'Chart',
+        iconName: 'ChartColumnBig',
+        description: 'Insert a chart',
+        aliases: ['chart', 'graph'],
+        action: (editor) => {
+          editor
+            .chain()
+            .focus()
+            .setChart({
+              type: 'bar',
+              colorKey: 'red',
+              data: [
+                {
+                  month: 'January',
+                  desktop: 186,
+                  mobile: 80,
+                  tablet: 45,
+                },
+                {
+                  month: 'February',
+                  desktop: 305,
+                  mobile: 200,
+                  tablet: 95,
+                },
+                {
+                  month: 'March',
+                  desktop: 237,
+                  mobile: 120,
+                  tablet: 78,
+                },
+                {
+                  month: 'April',
+                  desktop: 73,
+                  mobile: 190,
+                  tablet: 62,
+                },
+              ],
+              xAxisKey: 'month',
+              yAxisKeys: ['desktop'],
+              title: 'Sample Chart',
+            })
+            .run();
+        },
+      },
+      {
+        name: 'countdown',
+        label: 'Countdown',
+        iconName: 'Timer',
+        description: 'Insert a countdown timer',
+        aliases: ['countdown'],
+        action: (editor) => {
+          editor.chain().focus().setCountdown({ targetDate: '' }).run();
+        },
+      },
+      {
+        name: 'gantt',
+        label: 'Gantt Chart',
+        iconName: 'CalendarRange',
+        description: 'Insert a Gantt chart for project planning',
+        aliases: ['gantt', 'timeline', 'project'],
+        action: (editor) => {
+          editor.chain().focus().setGantt().run();
         },
       },
     ],

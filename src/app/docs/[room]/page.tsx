@@ -1,26 +1,43 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { EditorContent, useEditor } from '@tiptap/react';
 import * as Y from 'yjs';
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import { Eye } from 'lucide-react';
+import dynamic from 'next/dynamic';
 
+// 动态导入 CommentPanel，禁用 SSR
+const CommentPanel = dynamic(
+  () =>
+    import('@/app/docs/_components/CommentPanel').then((mod) => ({ default: mod.CommentPanel })),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 import { ExtensionKit } from '@/extensions/extension-kit';
 import { getCursorColorByUserId } from '@/utils/cursor_color';
 import { getAuthToken } from '@/utils/cookie';
 import DocumentHeader from '@/app/docs/_components/DocumentHeader';
-import { TableOfContents } from '@/app/docs/_components/TableOfContents';
-import { useSidebar } from '@/stores/sidebarStore';
+import { FloatingToc } from '@/app/docs/_components/FloatingToc';
+import { useFileStore } from '@/stores/fileStore';
+import { FileItem } from '@/app/docs/_components/DocumentSidebar/folder/type';
 import { ContentItemMenu } from '@/components/menus/ContentItemMenu';
 import { LinkMenu } from '@/components/menus';
 import { TextMenu } from '@/components/menus/TextMenu';
-import { ColumnsMenu } from '@/extensions/MultiColumn/menus';
-import { TableRowMenu, TableColumnMenu } from '@/extensions/Table/menus';
+import { TableRowMenu, TableColumnMenu, TableMenu, TableCellMenu } from '@/extensions/Table/menus';
 import { ImageBlockMenu } from '@/components/menus';
+import DocumentApi from '@/services/document';
+import NoPermission from '@/app/docs/_components/NoPermission';
+import { DocumentPermissionData } from '@/services/document/type';
+import { useCommentStore } from '@/stores/commentStore';
+import { useEditorStore } from '@/stores/editorStore';
+
 // 类型定义
 interface CollaborationUser {
   id: string;
@@ -31,79 +48,132 @@ interface CollaborationUser {
 
 export default function DocumentPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const documentId = params?.room as string;
   const menuContainerRef = useRef<HTMLDivElement>(null);
-  const sidebar = useSidebar();
+
+  // 获取URL参数中的只读模式设置
+  const forceReadOnly = searchParams?.get('readonly') === 'true';
+
+  const { files } = useFileStore();
 
   // 防止水合不匹配的强制客户端渲染
   const [isMounted, setIsMounted] = useState(false);
 
-  // 基本状态
-  const [isTocOpen, setIsTocOpen] = useState(false);
+  // 权限相关状态
+  const [permissionData, setPermissionData] = useState<DocumentPermissionData | null>(null);
+  const [isLoadingPermission, setIsLoadingPermission] = useState(true);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
 
   // 协作编辑器状态
   const [doc, setDoc] = useState<Y.Doc | null>(null);
   const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
   const [currentUser, setCurrentUser] = useState<CollaborationUser | null>(null);
   const [connectedUsers, setConnectedUsers] = useState<CollaborationUser[]>([]);
+  const [isIndexedDBReady, setIsIndexedDBReady] = useState(false);
+  const { openPanel, setActiveCommentId, closePanel, isPanelOpen } = useCommentStore();
+  const { setEditor, clearEditor } = useEditorStore();
 
   // Editor编辑器的容器元素
   const editorContainRef = useRef<HTMLDivElement>(null);
 
-  // 目录切换函数
-  const toggleToc = () => {
-    setIsTocOpen(!isTocOpen);
+  // 获取当前文档的名称
+  const getCurrentDocumentName = () => {
+    if (!documentId || !files.length) return null;
+
+    // 递归查找文件的函数，支持嵌套文件夹
+    const findFileById = (items: FileItem[], id: string): FileItem | null => {
+      for (const item of items) {
+        if (item.id === id) return item;
+
+        if (item.children && item.children.length > 0) {
+          const found = findFileById(item.children, id);
+          if (found) return found;
+        }
+      }
+
+      return null;
+    };
+
+    const currentFile = findFileById(files, documentId);
+
+    return currentFile?.name || null;
   };
 
-  // 初始化
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setDoc(new Y.Doc());
-      setIsMounted(true);
-    }
-  }, []);
-
-  // 获取当前用户信息
+  // 获取权限并初始化
   useEffect(() => {
     if (!documentId || typeof window === 'undefined') return;
 
-    try {
-      const userProfileStr = localStorage.getItem('user_profile');
+    async function init() {
+      setIsLoadingPermission(true);
+      setPermissionError(null);
 
-      if (userProfileStr) {
-        const userProfile = JSON.parse(userProfileStr);
-        setCurrentUser({
-          id: userProfile.id.toString(),
-          name: userProfile.name,
-          color: getCursorColorByUserId(userProfile.id.toString()),
-          avatar: userProfile.avatar_url,
-        });
+      const { data, error } = await DocumentApi.GetDocumentPermissions(Number(documentId));
+
+      if (error) {
+        setPermissionError(error);
+        setIsLoadingPermission(false);
+
+        return;
       }
-    } catch (error) {
-      console.error('解析用户信息失败:', error);
+
+      if (!data?.data) {
+        setPermissionError('无法获取文档权限信息');
+        setIsLoadingPermission(false);
+
+        return;
+      }
+
+      const permData = data.data;
+      setPermissionData(permData);
+      setIsLoadingPermission(false);
+
+      // 无权限时不初始化编辑器
+      if (permData.permission === 'NONE') {
+        setIsMounted(true);
+
+        return;
+      }
+
+      // 初始化编辑器和用户信息
+      setDoc(new Y.Doc());
+      setCurrentUser({
+        id: permData.userId.toString(),
+        name: permData.username,
+        color: getCursorColorByUserId(permData.userId.toString()),
+        avatar: permData.avatar,
+      });
+      setIsMounted(true);
     }
+
+    init();
   }, [documentId]);
 
   // 本地持久化
   useEffect(() => {
-    if (!documentId || !doc || typeof window === 'undefined') return;
+    if (!documentId || !doc || typeof window === 'undefined' || !permissionData) return;
+
+    setIsIndexedDBReady(false);
 
     const persistence = new IndexeddbPersistence(`tiptap-collaborative-${documentId}`, doc);
+
+    // 等待 IndexedDB 加载完成
+    persistence.on('synced', () => {
+      setIsIndexedDBReady(true);
+    });
 
     return () => {
       persistence.destroy();
     };
-  }, [documentId, doc]);
+  }, [documentId, doc, permissionData]);
 
   // 协作提供者
   useEffect(() => {
-    if (!documentId || !doc) return;
+    if (!documentId || !doc || !permissionData) return;
 
     const websocketUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL;
 
     if (!websocketUrl) {
-      console.error('WebSocket URL 未配置');
-
       return;
     }
 
@@ -120,7 +190,7 @@ export default function DocumentPage() {
     return () => {
       hocuspocusProvider.destroy();
     };
-  }, [documentId, doc]);
+  }, [documentId, doc, permissionData]);
 
   // 设置用户awareness信息
   useEffect(() => {
@@ -161,17 +231,42 @@ export default function DocumentPage() {
     return () => provider.awareness?.off('update', handleAwarenessUpdate);
   }, [provider, currentUser]);
 
-  // 创建编辑器
+  // 判断是否为只读模式
+  const isReadOnly = forceReadOnly || permissionData?.permission === 'VIEW';
+
+  // 创建编辑器 - 只有在 IndexedDB 准备好之后才创建
   const editor = useEditor(
     {
       extensions: [
-        ...ExtensionKit({ provider }),
-        ...(doc ? [Collaboration.configure({ document: doc, field: 'content' })] : []),
-        ...(provider && currentUser && doc
+        ...ExtensionKit({
+          provider,
+          commentCallbacks: {
+            onCommentActivated: (commentId) => {
+              // 使用 setTimeout 确保在下一个事件循环中更新状态，避免渲染期间更新
+              setTimeout(() => {
+                setActiveCommentId(commentId);
+
+                if (commentId) {
+                  openPanel();
+                }
+              }, 0);
+            },
+            onCommentClick: (commentId) => {
+              setTimeout(() => {
+                setActiveCommentId(commentId);
+                openPanel();
+              }, 0);
+            },
+          },
+        }),
+        ...(doc && isIndexedDBReady
+          ? [Collaboration.configure({ document: doc, field: 'content' })]
+          : []),
+        ...(provider && currentUser && doc && isIndexedDBReady
           ? [CollaborationCaret.configure({ provider, user: currentUser })]
           : []),
       ],
-      content: '<p>开始编写您的文档...</p>',
+      editable: !isReadOnly,
       editorProps: {
         attributes: {
           autocomplete: 'off',
@@ -183,16 +278,102 @@ export default function DocumentPage() {
       },
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
+      onCreate: ({ editor }) => {
+        // 编辑器创建后，将实例存储到store中
+        if (editor && documentId) {
+          setEditor(editor, documentId);
+        }
+      },
+      onDestroy: () => {
+        // 编辑器销毁时，清除store中的实例
+        clearEditor();
+      },
     },
-    [doc, provider, currentUser],
+    [doc, provider, currentUser, isReadOnly, isIndexedDBReady, documentId, setEditor, clearEditor],
   );
 
-  if (!isMounted || !doc || !editor) {
+  // 点击编辑器内容时关闭评论面板（除非点击评论标记）
+  useEffect(() => {
+    if (!editor || !isPanelOpen) return;
+
+    const handleEditorClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const isCommentMark = target.closest('span[data-comment="true"]');
+
+      // 如果点击的不是评论标记，则关闭面板
+      if (!isCommentMark) {
+        closePanel();
+      }
+    };
+
+    const editorElement = editor.view.dom;
+
+    // 确保元素仍然存在于DOM中
+    if (editorElement && document.body.contains(editorElement)) {
+      editorElement.addEventListener('click', handleEditorClick);
+
+      return () => {
+        // 再次检查元素是否仍然存在于DOM中
+        if (editorElement && document.body.contains(editorElement)) {
+          editorElement.removeEventListener('click', handleEditorClick);
+        }
+      };
+    }
+  }, [editor, isPanelOpen, closePanel]);
+
+  // 组件卸载时清理编辑器实例
+  useEffect(() => {
+    return () => {
+      clearEditor();
+    };
+  }, [clearEditor]);
+
+  // 加载中状态
+  if (isLoadingPermission) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+      <div
+        className="h-screen flex items-center justify-center bg-white dark:bg-gray-900"
+        suppressHydrationWarning
+      >
+        <div className="text-center">
+          <div className="inline-block animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
+          <p className="text-lg text-gray-600 dark:text-gray-400">正在加载文档权限...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 权限错误状态
+  if (permissionError) {
+    return <NoPermission message={permissionError} />;
+  }
+
+  // 无权限访问 - 只在明确permission为NONE时才拒绝
+  if (permissionData?.permission === 'NONE') {
+    return (
+      <NoPermission
+        documentTitle={permissionData?.documentTitle}
+        message="您没有访问此文档的权限。请联系文档所有者获取访问权限。"
+      />
+    );
+  }
+
+  // 编辑器未初始化（等待编辑器准备）
+  if (!isMounted || !doc || !isIndexedDBReady || !editor) {
+    return (
+      <div
+        className="h-screen flex items-center justify-center bg-white dark:bg-gray-900"
+        suppressHydrationWarning
+      >
         <div className="text-center">
           <div className="inline-block animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
           <p className="text-lg text-gray-600 dark:text-gray-400">正在初始化编辑器...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-2" suppressHydrationWarning>
+            {!isMounted && '等待挂载...'}
+            {isMounted && !doc && '创建文档...'}
+            {isMounted && doc && !isIndexedDBReady && '加载数据...'}
+            {isMounted && doc && isIndexedDBReady && !editor && '初始化编辑器...'}
+          </p>
         </div>
       </div>
     );
@@ -204,48 +385,59 @@ export default function DocumentPage() {
       ref={menuContainerRef}
       suppressHydrationWarning
     >
+      {/* 只读模式提示条 */}
+      {isReadOnly && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-2 flex items-center justify-center gap-2 text-amber-800 dark:text-amber-200">
+          <Eye className="w-4 h-4" />
+          <span className="text-sm font-medium">
+            {forceReadOnly
+              ? '只读模式 - 当前以只读模式查看文档'
+              : '只读模式 - 您只能查看此文档，无法编辑'}
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <DocumentHeader
-        editor={editor}
-        isSidebarOpen={sidebar.isOpen}
-        toggleSidebar={sidebar.toggle}
-        isTocOpen={isTocOpen}
-        toggleToc={toggleToc}
         provider={provider}
         connectedUsers={connectedUsers}
         currentUser={currentUser}
+        documentId={documentId}
+        documentTitle={permissionData?.documentTitle ?? getCurrentDocumentName() ?? undefined}
+        documentName={`文档 ${documentId}`}
       />
 
       {/* 主内容区域 */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 relative">
+        <div className="flex-1 relative overflow-hidden">
           <div
             ref={editorContainRef}
-            // onScroll={scrollLightHandler}
-            className="h-full overflow-y-auto relative w-full"
+            className="h-full overflow-y-auto overflow-x-hidden relative w-full"
           >
             <EditorContent editor={editor} className="prose-container h-full pl-14" />
           </div>
         </div>
-
-        {/* 目录侧边栏 */}
-        {isTocOpen && editor && (
-          <div className="w-80 border-l border-slate-200/60 dark:border-slate-800/60 overflow-hidden bg-white/95 dark:bg-slate-950/95 backdrop-blur-sm">
-            <TableOfContents isOpen={isTocOpen} editor={editor} />
-          </div>
-        )}
       </div>
 
-      {/* 编辑器菜单 */}
+      {/* 右侧悬浮目录 - Notion 风格 */}
       {editor && (
+        <>
+          <FloatingToc editor={editor} />
+          <CommentPanel editor={editor} documentId={documentId} currentUserId={currentUser?.id} />
+        </>
+      )}
+
+      {/* 编辑器菜单 - 只读模式下不显示编辑菜单 */}
+      {editor && !isReadOnly && (
         <>
           <ContentItemMenu editor={editor} />
           <LinkMenu editor={editor} appendTo={menuContainerRef} />
           <TextMenu editor={editor} />
-          <ColumnsMenu editor={editor} appendTo={menuContainerRef} />
           <TableRowMenu editor={editor} appendTo={menuContainerRef} />
           <TableColumnMenu editor={editor} appendTo={menuContainerRef} />
-          <ImageBlockMenu editor={editor}></ImageBlockMenu>
+          <TableMenu editor={editor} appendTo={menuContainerRef} />
+          <TableCellMenu editor={editor} appendTo={menuContainerRef} />
+          <ImageBlockMenu editor={editor} />
         </>
       )}
     </div>

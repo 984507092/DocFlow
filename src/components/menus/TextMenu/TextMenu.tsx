@@ -60,14 +60,8 @@ export const TextMenu = ({ editor }: TextMenuProps) => {
     <BubbleMenu
       className={selecting ? 'hidden' : ''}
       options={{
-        placement: 'top-start',
-        offset: 60,
-        shift: {
-          padding: 8,
-        },
-        flip: {
-          fallbackPlacements: ['bottom-start', 'top-end', 'bottom-end'],
-        },
+        placement: 'top',
+        offset: -60,
       }}
       editor={editor}
       pluginKey="textMenu"
@@ -122,6 +116,14 @@ export const TextMenu = ({ editor }: TextMenuProps) => {
         </MemoButton>
         <MemoButton tooltip="Code block" onClick={commands.onCodeBlock}>
           <Icon name="FileCode" />
+        </MemoButton>
+        <MemoButton
+          tooltip="添加评论"
+          tooltipShortcut={['Mod', 'Shift', 'M']}
+          onClick={commands.onComment}
+          active={states.isComment}
+        >
+          <Icon name="MessageCircle" />
         </MemoButton>
         <EditLinkPopover onSetLink={commands.onLink} />
         <Popover.Root>

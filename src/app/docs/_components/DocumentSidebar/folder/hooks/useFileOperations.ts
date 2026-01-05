@@ -22,6 +22,7 @@ interface UseFileOperationsReturn {
 export const useFileOperations = (refreshFiles: () => Promise<void>): UseFileOperationsReturn => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
+
   // 处理文件分享
   const handleShare = (file: FileItem) => {
     // 这个会在主组件中处理，因为涉及到状态管理

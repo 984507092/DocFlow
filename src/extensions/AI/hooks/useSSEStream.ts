@@ -14,11 +14,13 @@ interface UseSSEStreamProps {
   updateState: (state: any) => void;
   setAiState: (state: AIState) => void;
   updateAttributes: (attributes: Record<string, any>) => void;
-  buildContentString: (prompt: string, op?: string) => string;
+  buildContentString: (prompt: string, op?: string, aiNodePos?: number) => string;
   documentId: string;
   selectedModel: string;
   setResponse: (response: string) => void;
   editor: Editor;
+  useKnowledgeBase: boolean; // 添加知识库开关参数
+  selectedKnowledgeIds: number[]; // 选中的知识库ID列表
 }
 
 export const useSSEStream = ({
@@ -30,6 +32,8 @@ export const useSSEStream = ({
   selectedModel,
   setResponse,
   editor,
+  useKnowledgeBase,
+  selectedKnowledgeIds,
 }: UseSSEStreamProps) => {
   const accumulatedResponseRef = useRef('');
 
@@ -66,7 +70,9 @@ export const useSSEStream = ({
             const data = line.slice(6);
 
             if (data === '[DONE]') {
-              setAiState(AIState.INPUT);
+              // AI响应完成，切换到显示状态
+              setAiState(AIState.DISPLAY);
+              updateState({ aiState: AIState.DISPLAY });
               console.log('AI响应完成:', accumulatedResponseRef.current);
 
               return;
@@ -82,12 +88,12 @@ export const useSSEStream = ({
                 // 检查finish_reason来判断是否完成
                 if (choice.finish_reason === 'stop') {
                   // 流式传输完成，同步响应内容并切换到显示状态
-                  // console.log('结束');
                   updateState({
                     response: accumulatedResponseRef.current,
                     prompt: '',
-                    aiState: AIState.INPUT,
+                    aiState: AIState.DISPLAY,
                   });
+                  setAiState(AIState.DISPLAY);
 
                   return;
                 } else if (choice.delta && choice.delta.content) {
@@ -129,32 +135,36 @@ export const useSSEStream = ({
     prompt: string,
     nodeAttrs: any,
     abortRef: React.MutableRefObject<(() => void) | undefined>,
+    aiNodePos?: number,
   ) => {
-    if (!prompt?.trim()) return;
+    console.log('=== useSSEStream handleGenerateAI 开始 ===', {
+      prompt: prompt?.trim(),
+      nodeAttrs,
+      op: nodeAttrs.op,
+      aiNodePos,
+    });
 
+    if (!prompt?.trim()) {
+      console.log('useSSEStream: prompt为空，直接返回');
+
+      return;
+    }
+
+    console.log('useSSEStream: 清空累积响应，设置加载状态');
     accumulatedResponseRef.current = '';
     updateState({ aiState: AIState.LOADING });
 
     try {
-      const contentString = buildContentString(prompt, nodeAttrs.op);
+      const contentString = buildContentString(prompt, nodeAttrs.op, aiNodePos);
 
       const apiKeys = storage.get(STORAGE_KEYS.API_KEYS);
       const siliconflowApiKey = apiKeys?.siliconflow;
 
-      // 如果没有 API 密钥，提示用户配置
-      if (!siliconflowApiKey) {
-        setAiState(AIState.INPUT);
-        setResponse('');
-        updateAttributes({ aiState: AIState.INPUT, response: '' });
-
-        return;
-      }
-
-      // SSE流式数据处理
-      const requestData = {
-        apiKey: siliconflowApiKey,
+      // SSE流式数据处理 - 构建基础请求参数
+      const requestData: any = {
         model: selectedModel,
-        errorHandler: () => {
+        errorHandler: (error: any) => {
+          console.error('useSSEStream: SSE错误处理器被调用:', error);
           updateState({ aiState: AIState.INPUT });
           updateAttributes({
             aiState: AIState.DISPLAY,
@@ -162,29 +172,58 @@ export const useSSEStream = ({
         },
       };
 
+      // 只有当API密钥存在且不为空时才添加到请求参数中
+      if (siliconflowApiKey?.trim()) {
+        requestData.apiKey = siliconflowApiKey.trim();
+      }
+      // 如果没有API密钥，完全不传递apiKey参数，让后端使用系统默认配置
+
       // 续写
       resetAccumulatedResponse();
 
       if (nodeAttrs.op === 'continue') {
-        abortRef.current = await AiApi.ContinueWriting(
-          {
-            ...requestData,
-            documentId: documentId,
-            content: contentString,
-          },
-          processSSEResponse,
-        );
+        // 构建续写请求参数
+        const continueParams: any = {
+          documentId: documentId,
+          content: contentString,
+          model: selectedModel,
+        };
+
+        // 只有存在API密钥时才添加
+        if (requestData.apiKey) {
+          continueParams.apiKey = requestData.apiKey;
+        }
+
+        abortRef.current = await AiApi.ContinueWriting(continueParams, processSSEResponse);
       } else {
-        abortRef.current = await AiApi.Question(
-          {
-            ...requestData,
-            question: prompt,
-            useKnowledgeBase: true,
-          },
-          processSSEResponse,
-        );
+        // 构建问答请求参数
+        const questionParams: any = {
+          question: prompt,
+          model: selectedModel,
+          useKnowledgeBase: false, // 默认不使用知识库
+        };
+
+        // 只有启用了知识库且有选中的知识库，才传递知识库相关参数
+        if (useKnowledgeBase && selectedKnowledgeIds.length > 0) {
+          questionParams.useKnowledgeBase = true;
+          questionParams.knowledgeIds = selectedKnowledgeIds;
+        }
+
+        // 只有存在API密钥时才添加
+        if (requestData.apiKey) {
+          questionParams.apiKey = requestData.apiKey;
+        }
+
+        abortRef.current = await AiApi.Question(questionParams, processSSEResponse);
       }
     } catch (error) {
+      console.error('useSSEStream: catch块捕获到错误:', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : 'No stack',
+      });
+
       // 区分中止错误和其他错误
       if (error instanceof DOMException && error.name === 'AbortError') {
         console.log('AI生成被中止:', error);
@@ -194,7 +233,7 @@ export const useSSEStream = ({
         });
       } else {
         // 其他错误需要显示错误信息
-        console.error('AI生成过程中出错:', error);
+        console.error('useSSEStream: 非中止错误，重置状态:', error);
         updateState({
           aiState: AIState.INPUT,
           response: '',
