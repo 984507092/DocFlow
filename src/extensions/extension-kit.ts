@@ -70,6 +70,8 @@ import {
   Mention,
   mentionSuggestion,
   Alert,
+  MathLiveExtension,
+  SearchAndReplace,
 } from '.';
 import { ImageUpload } from './ImageUpload';
 import { TableOfContentsNode } from './TableOfContentsNode';
@@ -389,6 +391,8 @@ export const ExtensionKit = ({ provider, commentCallbacks }: ExtensionKitPropsWi
   MarkdownPaste,
   SelectOnlyCode,
   Audio,
+  // MathLive 专业数学编辑器
+  MathLiveExtension,
   // 数学公式迁移扩展 - 自动将 $...$ 转换为数学节点
   Extension.create({
     name: 'mathMigration',
@@ -451,6 +455,12 @@ export const ExtensionKit = ({ provider, commentCallbacks }: ExtensionKitPropsWi
       class: 'mention',
     },
     suggestion: mentionSuggestion,
+  }),
+  SearchAndReplace.configure({
+    searchResultClass: 'search-result',
+    currentSearchResultClass: 'current-search-result',
+    disableRegex: true,
+    caseSensitive: false,
   }),
 ];
 

@@ -12,6 +12,7 @@
 @import './partials/table.css';
 @import './partials/typography.css';
 @import './partials/math.css';
+@import './partials/mathlive.css';
 @import './partials/draggable.css';
 @import './partials/frappe-gantt.css';
 @import './partials/youtube.css';
@@ -235,6 +236,15 @@
 
   .dark .comment.comment-hovered {
     background-color: rgba(251, 191, 36, 0.12);
+  }
+
+  /* Search result highlight styles */
+  .search-result {
+    @apply bg-yellow-200 dark:bg-yellow-900/40 rounded-sm transition-colors;
+  }
+
+  .current-search-result {
+    @apply bg-orange-300 dark:bg-orange-800/60 ring-2 ring-orange-400 dark:ring-orange-600;
   }
 
   [data-theme='slash-command'] {
